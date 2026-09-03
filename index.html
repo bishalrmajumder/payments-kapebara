@@ -89,7 +89,7 @@
     letter-spacing: 0.02em;
   }
 
-  form {
+  form, .section-block {
     width: 100%;
     display: flex;
     flex-direction: column;
@@ -123,7 +123,7 @@
     opacity: 0.6;
   }
 
-  button {
+  button, .btn {
     width: 100%;
     padding: 1rem;
     border-radius: 999px;
@@ -136,17 +136,56 @@
     text-transform: uppercase;
     cursor: pointer;
     transition: opacity 0.3s ease, transform 0.3s var(--spring);
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
   }
 
-  button:hover:not(:disabled) { opacity: 0.85; }
+  button:hover:not(:disabled), .btn:hover { opacity: 0.85; }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid var(--border-noir);
+    color: var(--text-noir);
+    margin-top: 0.8rem;
+  }
+
+  .amount-display {
+    font-family: var(--serif);
+    font-size: 2.4rem;
+    font-weight: 400;
+    margin: 0.6rem 0 0.2rem;
+  }
+
+  .amount-caption {
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--sub-noir);
+    margin: 0 0 1.6rem;
+  }
+
+  .notice-box {
+    width: 100%;
+    border: 1px solid var(--border-noir);
+    border-radius: 14px;
+    padding: 1rem 1.1rem;
+    font-size: 0.66rem;
+    line-height: 1.7;
+    color: var(--sub-noir);
+    margin-bottom: 1.6rem;
+    text-align: left;
+  }
+
+  .notice-box strong { color: var(--text-noir); }
 
   .status-message {
     min-height: 1.2rem;
     font-size: 0.68rem;
     letter-spacing: 0.03em;
     line-height: 1.6;
-    margin-top: 1.4rem;
+    margin-top: 1.2rem;
     transition: color 0.3s ease;
   }
 
@@ -154,6 +193,13 @@
   .status-success { color: #b7e4c7; }
   .status-pending { color: #f1d9a8; }
   .status-error   { color: #e6a4a4; }
+
+  .confirm-icon {
+    font-size: 2.4rem;
+    margin-bottom: 0.8rem;
+  }
+
+  .hidden { display: none !important; }
 
   footer {
     margin-top: 2.5rem;
@@ -168,6 +214,7 @@
     color: var(--sub-noir);
     text-decoration: underline;
     text-underline-offset: 3px;
+    cursor: pointer;
   }
 </style>
 </head>
@@ -177,23 +224,55 @@
     <h1 class="wordmark">Kapebara</h1>
     <p class="tagline">Premium Apparel</p>
 
-    <h2 class="page-heading">Complete Your Payment</h2>
-    <p class="page-sub">Enter the Allocation ID you received on WhatsApp to proceed.</p>
+    <!-- STATE 1: Allocation ID lookup -->
+    <div class="section-block" id="lookupSection">
+      <h2 class="page-heading">Complete Your Payment</h2>
+      <p class="page-sub">Enter the Allocation ID you received on WhatsApp to proceed.</p>
 
-    <form id="lookupForm">
-      <label for="allocationIdInput">Allocation ID</label>
-      <input
-        type="text"
-        id="allocationIdInput"
-        placeholder="#030926XXXXX"
-        autocomplete="off"
-        autocapitalize="characters"
-        required
-      />
-      <button type="submit" id="submitBtn">Proceed to Payment</button>
-    </form>
+      <form id="lookupForm">
+        <label for="allocationIdInput">Allocation ID</label>
+        <input
+          type="text"
+          id="allocationIdInput"
+          placeholder="#030926XXXXX"
+          autocomplete="off"
+          autocapitalize="characters"
+          required
+        />
+        <button type="submit" id="submitBtn">Look Up Allocation</button>
+      </form>
 
-    <p class="status-message" id="statusMessage"></p>
+      <p class="status-message" id="statusMessage"></p>
+    </div>
+
+    <!-- STATE 2: Amount confirmation, before redirect to Razorpay -->
+    <div class="section-block hidden" id="amountSection">
+      <h2 class="page-heading">Allocation Confirmed</h2>
+      <p class="page-sub" id="amountAllocationId"></p>
+
+      <p class="amount-display" id="amountValue"></p>
+      <p class="amount-caption">Amount to Pay</p>
+
+      <div class="notice-box">
+        You'll now be redirected to our secure payment gateway.
+        Please make sure the amount shown on the gateway matches
+        <strong id="amountReminder"></strong> exactly before you pay.
+      </div>
+
+      <button type="button" id="continueToPaymentBtn">Continue to Payment</button>
+      <button type="button" class="btn btn-ghost" id="backToLookupBtn">Look Up a Different ID</button>
+    </div>
+
+    <!-- STATE 3: Post-payment confirmation (detected on return) -->
+    <div class="section-block hidden" id="confirmedSection">
+      <div class="confirm-icon">✓</div>
+      <h2 class="page-heading">Payment Confirmed</h2>
+      <p class="page-sub">
+        Your order for Allocation <span id="confirmedAllocationId"></span> is confirmed
+        and will be arriving soon. We'll keep you posted on WhatsApp.
+      </p>
+      <button type="button" class="btn btn-ghost" id="confirmedNewLookupBtn">Look Up Another Allocation</button>
+    </div>
 
     <footer>
       <a href="https://kapebara.in" target="_blank" rel="noopener">Back to KAPEBARA</a>
@@ -204,31 +283,42 @@
 
   <script>
     /* =========================================================
-       CONFIG — fill these in once.
-       1. SHEET_LOOKUP_URL: the SAME Google Apps Script /exec URL
-          already used by kapebara.html to save submissions. The
-          script has been extended (see setup notes) with a doGet()
-          handler that looks up an Allocation ID and returns its
-          Proposed Amount.
-       2. RAZORPAY_PAYMENT_PAGE_URL: create one Razorpay Payment Page
-          (Dashboard -> Payment Pages -> + Create) with an optional
-          "Amount" price field, publish it, and paste its URL below.
-          razorpay.me links do NOT support a pre-filled amount, so a
-          Payment Page is used instead — same one-link experience.
+       CONFIG
     ========================================================= */
-    const SHEET_LOOKUP_URL = 'https://script.google.com/macros/s/AKfycby2y_hlcSqy8x199Y5bnCfjs-dBeIilNpyoykVafbiC6ZJFbVocKdIThdmysd-yp7kY/exec';
-    const RAZORPAY_PAYMENT_PAGE_URL = 'https://rzp.io/rzp/kapebara';
+    const SHEET_LOOKUP_URL = 'https://script.google.com/macros/s/AKfycbwsXYNMCUoBqCx-E9KhDwKv_wk0Dr54VbZjGca-ia7jmeHh6UJ5h2wWqOivUTduDyqu/exec';
+    const RAZORPAY_LINK = 'https://rzp.io/rzp/kapebara';
     const BUSINESS_WHATSAPP = '916289232792';
+    const PENDING_KEY = 'kapebara_pending_allocation';
 
+    /* Keeps track of whichever Allocation ID is currently on screen,
+       so "Contact Us" can reference it in the WhatsApp message. */
+    let currentAllocationId = '';
+
+    const lookupSection = document.getElementById('lookupSection');
+    const amountSection = document.getElementById('amountSection');
+    const confirmedSection = document.getElementById('confirmedSection');
+    const statusEl = document.getElementById('statusMessage');
+    const submitBtn = document.getElementById('submitBtn');
+
+    function showSection(section) {
+      [lookupSection, amountSection, confirmedSection].forEach((el) => el.classList.add('hidden'));
+      section.classList.remove('hidden');
+    }
+
+    /* ---- Contact Us: always opens WhatsApp with the current
+       Allocation ID (if we know one) baked into the message. ---- */
     document.getElementById('contactLink').addEventListener('click', function (e) {
       e.preventDefault();
-      var message = 'Hey there, having trouble with my KAPEBARA payment.';
+      var message = currentAllocationId
+        ? 'KAPEBARA - ' + currentAllocationId + ' - need a track on my order'
+        : 'Hey there, having trouble with my KAPEBARA payment.';
       window.open('https://wa.me/' + BUSINESS_WHATSAPP + '?text=' + encodeURIComponent(message), '_blank');
     });
 
-    /* JSONP lookup — Apps Script Web Apps don't send CORS headers,
-       so a plain fetch() can't read the JSON response. Loading it
-       as a <script> tag sidesteps that entirely. */
+    /* ---- JSONP lookup against the Apps Script Web App ----
+       Apps Script Web Apps don't send CORS headers, so a plain
+       fetch() can't read the JSON response. Loading it as a
+       <script> tag sidesteps that entirely. */
     function lookupAllocation(allocationId) {
       return new Promise(function (resolve, reject) {
         var callbackName = 'kapebaraLookup_' + Date.now();
@@ -263,17 +353,7 @@
 
       var input = document.getElementById('allocationIdInput');
       var allocationId = input.value.trim();
-      var statusEl = document.getElementById('statusMessage');
-      var submitBtn = document.getElementById('submitBtn');
-
       if (!allocationId) return;
-
-      if (!SHEET_LOOKUP_URL || SHEET_LOOKUP_URL.indexOf('PASTE_YOUR') !== -1 ||
-          !RAZORPAY_PAYMENT_PAGE_URL || RAZORPAY_PAYMENT_PAGE_URL.indexOf('PASTE_YOUR') !== -1) {
-        statusEl.textContent = 'This payment page is still being set up. Please check back shortly.';
-        statusEl.className = 'status-message status-error';
-        return;
-      }
 
       submitBtn.disabled = true;
       statusEl.textContent = 'Looking up your allocation…';
@@ -297,12 +377,18 @@
           return;
         }
 
-        statusEl.textContent = 'Allocation ' + allocationId + ' confirmed — redirecting you to pay \u20B9' + amount.toLocaleString('en-IN') + '…';
-        statusEl.className = 'status-message status-success';
+        currentAllocationId = allocationId;
+        statusEl.textContent = '';
+        submitBtn.disabled = false;
 
-        setTimeout(function () {
-          window.location.href = RAZORPAY_PAYMENT_PAGE_URL + '?amount=' + amount;
-        }, 1400);
+        document.getElementById('amountAllocationId').textContent = 'Allocation ' + allocationId;
+        document.getElementById('amountValue').textContent = '\u20B9' + amount.toLocaleString('en-IN');
+        document.getElementById('amountReminder').textContent = '\u20B9' + amount.toLocaleString('en-IN');
+
+        // Remember the amount for the redirect step below.
+        document.getElementById('continueToPaymentBtn').dataset.amount = amount;
+
+        showSection(amountSection);
 
       } catch (err) {
         statusEl.textContent = 'Something went wrong reaching our records. Please try again in a moment.';
@@ -310,6 +396,57 @@
         submitBtn.disabled = false;
       }
     });
+
+    document.getElementById('backToLookupBtn').addEventListener('click', function () {
+      document.getElementById('allocationIdInput').value = '';
+      statusEl.textContent = '';
+      showSection(lookupSection);
+    });
+
+    document.getElementById('continueToPaymentBtn').addEventListener('click', function () {
+      var amount = this.dataset.amount;
+
+      // Mark this allocation as "pending payment" so that when the
+      // customer lands back here from Razorpay, we know which order
+      // to confirm — set right before leaving the page.
+      localStorage.setItem(PENDING_KEY, currentAllocationId);
+
+      // Best-effort amount pre-fill; harmless if Razorpay ignores it.
+      // The on-screen amount above is the real instruction either way.
+      window.location.href = RAZORPAY_LINK + '?amount=' + amount;
+    });
+
+    document.getElementById('confirmedNewLookupBtn').addEventListener('click', function () {
+      currentAllocationId = '';
+      document.getElementById('allocationIdInput').value = '';
+      showSection(lookupSection);
+    });
+
+    /* ---- Detect a return from a successful Razorpay payment ----
+       Two signals together, since Razorpay's exact redirect
+       parameters for Payment Pages aren't published:
+       1. A pending allocation was stored right before we redirected.
+       2. Either the browser's referrer shows we came from Razorpay,
+          or the URL carries query parameters Razorpay appended. */
+    (function checkForReturnFromPayment() {
+      var pendingId = localStorage.getItem(PENDING_KEY);
+      if (!pendingId) return;
+
+      var cameFromRazorpay = document.referrer && document.referrer.indexOf('razorpay') !== -1;
+      var hasQueryParams = window.location.search.length > 1;
+
+      if (cameFromRazorpay || hasQueryParams) {
+        currentAllocationId = pendingId;
+        document.getElementById('confirmedAllocationId').textContent = pendingId;
+        showSection(confirmedSection);
+        localStorage.removeItem(PENDING_KEY);
+
+        // Clean the URL so a refresh doesn't re-trigger this state.
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      }
+    })();
   </script>
 
 </body>
