@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>KAPEBARA — Complete Your Payment</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Montserrat:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-noir: #030303;
+    --text-noir: #ffffff;
+    --sub-noir: #9a9a9d;
+    --card-noir: rgba(14, 14, 15, 0.78);
+    --border-noir: rgba(255, 255, 255, 0.14);
+    --input-noir: rgba(0, 0, 0, 0.65);
+    --serif: 'Cormorant Garamond', serif;
+    --sans: 'Montserrat', sans-serif;
+    --spring: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    background: var(--bg-noir);
+    color: var(--text-noir);
+    font-family: var(--sans);
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(env(safe-area-inset-top) + 2rem) 1.4rem calc(env(safe-area-inset-bottom) + 2rem);
+  }
+
+  .payment-card {
+    width: 100%;
+    max-width: 440px;
+    background: var(--card-noir);
+    border: 1px solid var(--border-noir);
+    border-radius: 28px;
+    padding: 2.8rem 1.8rem;
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    box-shadow: 0 35px 70px rgba(0,0,0,0.6);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .wordmark {
+    font-family: var(--serif);
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    font-size: 1.6rem;
+    font-weight: 400;
+    margin: 0;
+  }
+
+  .tagline {
+    font-size: 0.6rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--sub-noir);
+    margin: 0.4rem 0 2rem;
+  }
+
+  .page-heading {
+    font-family: var(--serif);
+    font-size: 1.6rem;
+    font-weight: 300;
+    margin: 0 0 0.4rem;
+  }
+
+  .page-sub {
+    font-size: 0.68rem;
+    line-height: 1.7;
+    color: var(--sub-noir);
+    text-align: center;
+    margin: 0 0 2rem;
+    letter-spacing: 0.02em;
+  }
+
+  form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  label {
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--sub-noir);
+    text-align: left;
+  }
+
+  input {
+    width: 100%;
+    padding: 0.9rem 1rem;
+    border-radius: 10px;
+    border: 1px solid var(--border-noir);
+    background: var(--input-noir);
+    color: var(--text-noir);
+    font-family: var(--sans);
+    font-size: 0.85rem;
+    letter-spacing: 0.05em;
+    outline: none;
+    margin-bottom: 1.2rem;
+  }
+
+  input::placeholder {
+    color: var(--sub-noir);
+    opacity: 0.6;
+  }
+
+  button {
+    width: 100%;
+    padding: 1rem;
+    border-radius: 999px;
+    border: none;
+    background: var(--text-noir);
+    color: var(--bg-noir);
+    font-family: var(--sans);
+    font-size: 0.68rem;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: opacity 0.3s ease, transform 0.3s var(--spring);
+  }
+
+  button:hover:not(:disabled) { opacity: 0.85; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .status-message {
+    min-height: 1.2rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.03em;
+    line-height: 1.6;
+    margin-top: 1.4rem;
+    transition: color 0.3s ease;
+  }
+
+  .status-loading { color: var(--sub-noir); }
+  .status-success { color: #b7e4c7; }
+  .status-pending { color: #f1d9a8; }
+  .status-error   { color: #e6a4a4; }
+
+  footer {
+    margin-top: 2.5rem;
+    text-align: center;
+    font-size: 0.56rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--sub-noir);
+  }
+
+  footer a {
+    color: var(--sub-noir);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+</style>
+</head>
+<body>
+
+  <div class="payment-card">
+    <h1 class="wordmark">Kapebara</h1>
+    <p class="tagline">Premium Apparel</p>
+
+    <h2 class="page-heading">Complete Your Payment</h2>
+    <p class="page-sub">Enter the Allocation ID you received on WhatsApp to proceed.</p>
+
+    <form id="lookupForm">
+      <label for="allocationIdInput">Allocation ID</label>
+      <input
+        type="text"
+        id="allocationIdInput"
+        placeholder="#030926XXXXX"
+        autocomplete="off"
+        autocapitalize="characters"
+        required
+      />
+      <button type="submit" id="submitBtn">Proceed to Payment</button>
+    </form>
+
+    <p class="status-message" id="statusMessage"></p>
+
+    <footer>
+      <a href="https://kapebara.in" target="_blank" rel="noopener">Back to KAPEBARA</a>
+      &nbsp;·&nbsp;
+      <a href="#" id="contactLink">Contact Us</a>
+    </footer>
+  </div>
+
+  <script>
+    /* =========================================================
+       CONFIG — fill these in once.
+       1. SHEET_LOOKUP_URL: the SAME Google Apps Script /exec URL
+          already used by kapebara.html to save submissions. The
+          script has been extended (see setup notes) with a doGet()
+          handler that looks up an Allocation ID and returns its
+          Proposed Amount.
+       2. RAZORPAY_PAYMENT_PAGE_URL: create one Razorpay Payment Page
+          (Dashboard -> Payment Pages -> + Create) with an optional
+          "Amount" price field, publish it, and paste its URL below.
+          razorpay.me links do NOT support a pre-filled amount, so a
+          Payment Page is used instead — same one-link experience.
+    ========================================================= */
+    const SHEET_LOOKUP_URL = 'https://script.google.com/macros/s/AKfycby2y_hlcSqy8x199Y5bnCfjs-dBeIilNpyoykVafbiC6ZJFbVocKdIThdmysd-yp7kY/exec';
+    const RAZORPAY_PAYMENT_PAGE_URL = 'https://rzp.io/rzp/kapebara';
+    const BUSINESS_WHATSAPP = '916289232792';
+
+    document.getElementById('contactLink').addEventListener('click', function (e) {
+      e.preventDefault();
+      var message = 'Hey there, having trouble with my KAPEBARA payment.';
+      window.open('https://wa.me/' + BUSINESS_WHATSAPP + '?text=' + encodeURIComponent(message), '_blank');
+    });
+
+    /* JSONP lookup — Apps Script Web Apps don't send CORS headers,
+       so a plain fetch() can't read the JSON response. Loading it
+       as a <script> tag sidesteps that entirely. */
+    function lookupAllocation(allocationId) {
+      return new Promise(function (resolve, reject) {
+        var callbackName = 'kapebaraLookup_' + Date.now();
+        var timeoutId = setTimeout(function () {
+          cleanup();
+          reject(new Error('Request timed out.'));
+        }, 10000);
+
+        function cleanup() {
+          clearTimeout(timeoutId);
+          delete window[callbackName];
+          if (script.parentNode) script.parentNode.removeChild(script);
+        }
+
+        window[callbackName] = function (data) {
+          cleanup();
+          resolve(data);
+        };
+
+        var script = document.createElement('script');
+        script.src = SHEET_LOOKUP_URL + '?id=' + encodeURIComponent(allocationId) + '&callback=' + callbackName;
+        script.onerror = function () {
+          cleanup();
+          reject(new Error('Could not reach the lookup service.'));
+        };
+        document.body.appendChild(script);
+      });
+    }
+
+    document.getElementById('lookupForm').addEventListener('submit', async function (event) {
+      event.preventDefault();
+
+      var input = document.getElementById('allocationIdInput');
+      var allocationId = input.value.trim();
+      var statusEl = document.getElementById('statusMessage');
+      var submitBtn = document.getElementById('submitBtn');
+
+      if (!allocationId) return;
+
+      if (!SHEET_LOOKUP_URL || SHEET_LOOKUP_URL.indexOf('PASTE_YOUR') !== -1 ||
+          !RAZORPAY_PAYMENT_PAGE_URL || RAZORPAY_PAYMENT_PAGE_URL.indexOf('PASTE_YOUR') !== -1) {
+        statusEl.textContent = 'This payment page is still being set up. Please check back shortly.';
+        statusEl.className = 'status-message status-error';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      statusEl.textContent = 'Looking up your allocation…';
+      statusEl.className = 'status-message status-loading';
+
+      try {
+        var result = await lookupAllocation(allocationId);
+
+        if (!result.found) {
+          statusEl.textContent = "We couldn't find that Allocation ID. Please double-check and try again.";
+          statusEl.className = 'status-message status-error';
+          submitBtn.disabled = false;
+          return;
+        }
+
+        var amount = parseFloat(result.proposedAmount);
+        if (!amount || amount <= 0) {
+          statusEl.textContent = "Your payment amount hasn't been finalised yet. We'll message you on WhatsApp as soon as it's ready.";
+          statusEl.className = 'status-message status-pending';
+          submitBtn.disabled = false;
+          return;
+        }
+
+        statusEl.textContent = 'Allocation ' + allocationId + ' confirmed — redirecting you to pay \u20B9' + amount.toLocaleString('en-IN') + '…';
+        statusEl.className = 'status-message status-success';
+
+        setTimeout(function () {
+          window.location.href = RAZORPAY_PAYMENT_PAGE_URL + '?amount=' + amount;
+        }, 1400);
+
+      } catch (err) {
+        statusEl.textContent = 'Something went wrong reaching our records. Please try again in a moment.';
+        statusEl.className = 'status-message status-error';
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+
+</body>
+</html>
