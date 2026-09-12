@@ -3,13 +3,14 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>Payments | KAPEBARA</title>
+<title>Payments|KAPEBARA</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Montserrat:wght@200;300;400;500;600&display=swap" rel="stylesheet">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 
 <style>
   :root {
@@ -510,9 +511,7 @@
        CONFIG
     ========================================================= */
     const SHEET_LOOKUP_URL = 'https://script.google.com/macros/s/AKfycbyo_mFAK5wKPLG7fh6-cT8QCRC2y3QCZ8AO2Y1ktDi7zNqQZcn3jmMnZPthqvtC1cRU/exec';
-    const RAZORPAY_LINK = 'https://rzp.io/rzp/kapebara';
     const BUSINESS_WHATSAPP = '916289232792';
-    const PENDING_KEY = 'kapebara_pending_allocation';
 
     /* Keeps track of whichever Allocation ID is currently on screen,
        so "Contact Us" can reference it in the WhatsApp message. */
@@ -543,13 +542,18 @@
        Apps Script Web Apps don't send CORS headers, so a plain
        fetch() can't read the JSON response. Loading it as a
        <script> tag sidesteps that entirely. */
-    function lookupAllocation(allocationId) {
+    /* ---- Generic JSONP request helper ----
+       Apps Script Web Apps don't send CORS headers, so a plain
+       fetch() can't read the JSON response. Loading it as a
+       <script> tag sidesteps that entirely. Reused for lookup,
+       order creation, and payment verification. */
+    function jsonpRequest(params) {
       return new Promise(function (resolve, reject) {
-        var callbackName = 'kapebaraLookup_' + Date.now();
+        var callbackName = 'kapebaraCb_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
         var timeoutId = setTimeout(function () {
           cleanup();
           reject(new Error('Request timed out.'));
-        }, 10000);
+        }, 15000);
 
         function cleanup() {
           clearTimeout(timeoutId);
@@ -562,13 +566,35 @@
           resolve(data);
         };
 
+        var query = Object.keys(params)
+          .map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]); })
+          .join('&');
+
         var script = document.createElement('script');
-        script.src = SHEET_LOOKUP_URL + '?id=' + encodeURIComponent(allocationId) + '&callback=' + callbackName;
+        script.src = SHEET_LOOKUP_URL + '?' + query + '&callback=' + callbackName;
         script.onerror = function () {
           cleanup();
-          reject(new Error('Could not reach the lookup service.'));
+          reject(new Error('Could not reach the server.'));
         };
         document.body.appendChild(script);
+      });
+    }
+
+    function lookupAllocation(allocationId) {
+      return jsonpRequest({ action: 'lookup', id: allocationId });
+    }
+
+    function createRazorpayOrder(allocationId) {
+      return jsonpRequest({ action: 'createOrder', id: allocationId });
+    }
+
+    function verifyRazorpayPayment(allocationId, razorpayResponse) {
+      return jsonpRequest({
+        action: 'verifyPayment',
+        id: allocationId,
+        razorpay_order_id: razorpayResponse.razorpay_order_id,
+        razorpay_payment_id: razorpayResponse.razorpay_payment_id,
+        razorpay_signature: razorpayResponse.razorpay_signature
       });
     }
 
@@ -609,9 +635,6 @@
         document.getElementById('amountValue').textContent = '\u20B9' + amount.toLocaleString('en-IN');
         document.getElementById('amountReminder').textContent = '\u20B9' + amount.toLocaleString('en-IN');
 
-        // Remember the amount for the redirect step below.
-        document.getElementById('continueToPaymentBtn').dataset.amount = amount;
-
         showSection(amountSection);
 
       } catch (err) {
@@ -627,17 +650,73 @@
       showSection(lookupSection);
     });
 
-    document.getElementById('continueToPaymentBtn').addEventListener('click', function () {
-      var amount = this.dataset.amount;
+    /* ---- Continue to Payment: real Orders API + Checkout.js ----
+       The amount is locked server-side (the Order), not typed in
+       manually, and payment is confirmed only after the signature
+       verifies — not guessed from a redirect. */
+    var continueBtn = document.getElementById('continueToPaymentBtn');
+    var ghostBtn = document.getElementById('backToLookupBtn');
 
-      // Mark this allocation as "pending payment" so that when the
-      // customer lands back here from Razorpay, we know which order
-      // to confirm — set right before leaving the page.
-      localStorage.setItem(PENDING_KEY, currentAllocationId);
+    continueBtn.addEventListener('click', async function () {
+      continueBtn.disabled = true;
+      continueBtn.textContent = 'Preparing payment…';
 
-      // Best-effort amount pre-fill; harmless if Razorpay ignores it.
-      // The on-screen amount above is the real instruction either way.
-      window.location.href = RAZORPAY_LINK + '?amount=' + amount;
+      try {
+        var orderResult = await createRazorpayOrder(currentAllocationId);
+
+        if (!orderResult.success) {
+          continueBtn.disabled = false;
+          continueBtn.textContent = 'Continue to Payment';
+          alert(orderResult.error || 'Could not start payment. Please try again.');
+          return;
+        }
+
+        var options = {
+          key: orderResult.keyId,
+          amount: orderResult.amountPaise,
+          currency: 'INR',
+          name: 'KAPEBARA',
+          description: 'Allocation ' + currentAllocationId,
+          order_id: orderResult.orderId,
+          handler: async function (response) {
+            continueBtn.textContent = 'Verifying payment…';
+            try {
+              var verifyResult = await verifyRazorpayPayment(currentAllocationId, response);
+              if (verifyResult.success) {
+                document.getElementById('confirmedAllocationId').textContent = currentAllocationId;
+                showSection(confirmedSection);
+              } else {
+                alert("Payment went through, but we couldn't verify it automatically. Please contact us with your Allocation ID so we can confirm manually.");
+              }
+            } catch (err) {
+              alert("Payment went through, but we couldn't reach our records to verify it. Please contact us with your Allocation ID.");
+            } finally {
+              continueBtn.disabled = false;
+              continueBtn.textContent = 'Continue to Payment';
+            }
+          },
+          modal: {
+            ondismiss: function () {
+              continueBtn.disabled = false;
+              continueBtn.textContent = 'Continue to Payment';
+            }
+          },
+          theme: { color: '#14120f' }
+        };
+
+        var rzp = new Razorpay(options);
+        rzp.on('payment.failed', function () {
+          continueBtn.disabled = false;
+          continueBtn.textContent = 'Continue to Payment';
+          alert('Payment failed or was cancelled. Please try again.');
+        });
+        rzp.open();
+
+      } catch (err) {
+        continueBtn.disabled = false;
+        continueBtn.textContent = 'Continue to Payment';
+        alert('Something went wrong starting the payment. Please try again.');
+      }
     });
 
     document.getElementById('confirmedNewLookupBtn').addEventListener('click', function () {
@@ -645,32 +724,6 @@
       document.getElementById('allocationIdInput').value = '';
       showSection(lookupSection);
     });
-
-    /* ---- Detect a return from a successful Razorpay payment ----
-       Two signals together, since Razorpay's exact redirect
-       parameters for Payment Pages aren't published:
-       1. A pending allocation was stored right before we redirected.
-       2. Either the browser's referrer shows we came from Razorpay,
-          or the URL carries query parameters Razorpay appended. */
-    (function checkForReturnFromPayment() {
-      var pendingId = localStorage.getItem(PENDING_KEY);
-      if (!pendingId) return;
-
-      var cameFromRazorpay = document.referrer && document.referrer.indexOf('razorpay') !== -1;
-      var hasQueryParams = window.location.search.length > 1;
-
-      if (cameFromRazorpay || hasQueryParams) {
-        currentAllocationId = pendingId;
-        document.getElementById('confirmedAllocationId').textContent = pendingId;
-        showSection(confirmedSection);
-        localStorage.removeItem(PENDING_KEY);
-
-        // Clean the URL so a refresh doesn't re-trigger this state.
-        if (window.history && window.history.replaceState) {
-          window.history.replaceState({}, document.title, window.location.pathname);
-        }
-      }
-    })();
   </script>
 
 </body>
