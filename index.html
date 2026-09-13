@@ -261,6 +261,15 @@
   .confirm-icon {
     font-size: 2.4rem;
     margin-bottom: 0.8rem;
+    color: #2f6b45;
+  }
+
+  .confirm-icon-failed {
+    color: #a13d3d;
+  }
+
+  #sendWhatsappConfirmationBtn {
+    margin-bottom: 0.8rem;
   }
 
   .hidden { display: none !important; }
@@ -381,10 +390,30 @@
       <div class="confirm-icon">✓</div>
       <h2 class="page-heading">Payment Confirmed</h2>
       <p class="page-sub">
-        Your order for Allocation <span id="confirmedAllocationId"></span> is confirmed
+        Order ID <span id="confirmedAllocationId"></span> is confirmed
         and will be arriving soon. We'll keep you posted on WhatsApp.
       </p>
+
+      <div class="notice-box" id="confirmedDetailsBox">
+        <strong>Order ID:</strong> <span id="detailOrderId"></span><br>
+        <strong>Amount Paid:</strong> <span id="detailAmount"></span><br>
+        <strong>Transaction ID:</strong> <span id="detailPaymentId"></span>
+      </div>
+
+      <button type="button" id="sendWhatsappConfirmationBtn">Send Confirmation to WhatsApp</button>
       <button type="button" class="btn btn-ghost" id="confirmedNewLookupBtn">Look Up Another Allocation</button>
+    </div>
+
+    <!-- STATE 4: Payment failed -->
+    <div class="section-block hidden" id="failedSection">
+      <div class="confirm-icon confirm-icon-failed">✕</div>
+      <h2 class="page-heading">Payment Failed</h2>
+      <p class="page-sub">
+        Your payment for Order ID <span id="failedAllocationId"></span> didn't go through.
+        No amount has been charged. You can try again below.
+      </p>
+      <button type="button" id="retryPaymentBtn">Retry Payment</button>
+      <button type="button" class="btn btn-ghost" id="failedNewLookupBtn">Look Up a Different ID</button>
     </div>
       <div class="post-submit-actions">
       <a href="https://kapebara.in" class="back-nav-btn">Home</a>
@@ -520,11 +549,16 @@
     const lookupSection = document.getElementById('lookupSection');
     const amountSection = document.getElementById('amountSection');
     const confirmedSection = document.getElementById('confirmedSection');
+    const failedSection = document.getElementById('failedSection');
     const statusEl = document.getElementById('statusMessage');
     const submitBtn = document.getElementById('submitBtn');
 
+    // Filled in once a payment succeeds, so the WhatsApp confirmation
+    // button can reference the real transaction details.
+    let lastPaymentDetails = { orderId: '', paymentId: '', amount: 0 };
+
     function showSection(section) {
-      [lookupSection, amountSection, confirmedSection].forEach((el) => el.classList.add('hidden'));
+      [lookupSection, amountSection, confirmedSection, failedSection].forEach((el) => el.classList.add('hidden'));
       section.classList.remove('hidden');
     }
 
@@ -598,6 +632,17 @@
       });
     }
 
+    /* Records a failed/cancelled attempt on the sheet. Fire-and-forget —
+       we don't block the UI on this, since the customer has already
+       seen the Payment Failed screen either way. */
+    function recordPaymentFailure(allocationId, orderId) {
+      jsonpRequest({
+        action: 'recordFailure',
+        id: allocationId,
+        razorpay_order_id: orderId || ''
+      }).catch(function () { /* best-effort only */ });
+    }
+
     document.getElementById('lookupForm').addEventListener('submit', async function (event) {
       event.preventDefault();
 
@@ -657,7 +702,7 @@
     var continueBtn = document.getElementById('continueToPaymentBtn');
     var ghostBtn = document.getElementById('backToLookupBtn');
 
-    continueBtn.addEventListener('click', async function () {
+    async function startPayment() {
       continueBtn.disabled = true;
       continueBtn.textContent = 'Preparing payment…';
 
@@ -683,13 +728,27 @@
             try {
               var verifyResult = await verifyRazorpayPayment(currentAllocationId, response);
               if (verifyResult.success) {
+                lastPaymentDetails = {
+                  orderId: currentAllocationId,
+                  paymentId: response.razorpay_payment_id,
+                  amount: orderResult.amount
+                };
+
                 document.getElementById('confirmedAllocationId').textContent = currentAllocationId;
+                document.getElementById('detailOrderId').textContent = currentAllocationId;
+                document.getElementById('detailAmount').textContent = '\u20B9' + Number(orderResult.amount).toLocaleString('en-IN');
+                document.getElementById('detailPaymentId').textContent = response.razorpay_payment_id;
+
                 showSection(confirmedSection);
               } else {
-                alert("Payment went through, but we couldn't verify it automatically. Please contact us with your Allocation ID so we can confirm manually.");
+                document.getElementById('failedAllocationId').textContent = currentAllocationId;
+                showSection(failedSection);
+                recordPaymentFailure(currentAllocationId, orderResult.orderId);
               }
             } catch (err) {
-              alert("Payment went through, but we couldn't reach our records to verify it. Please contact us with your Allocation ID.");
+              document.getElementById('failedAllocationId').textContent = currentAllocationId;
+              showSection(failedSection);
+              recordPaymentFailure(currentAllocationId, orderResult.orderId);
             } finally {
               continueBtn.disabled = false;
               continueBtn.textContent = 'Continue to Payment';
@@ -699,6 +758,9 @@
             ondismiss: function () {
               continueBtn.disabled = false;
               continueBtn.textContent = 'Continue to Payment';
+              document.getElementById('failedAllocationId').textContent = currentAllocationId;
+              showSection(failedSection);
+              recordPaymentFailure(currentAllocationId, orderResult.orderId);
             }
           },
           theme: { color: '#14120f' }
@@ -708,7 +770,9 @@
         rzp.on('payment.failed', function () {
           continueBtn.disabled = false;
           continueBtn.textContent = 'Continue to Payment';
-          alert('Payment failed or was cancelled. Please try again.');
+          document.getElementById('failedAllocationId').textContent = currentAllocationId;
+          showSection(failedSection);
+          recordPaymentFailure(currentAllocationId, orderResult.orderId);
         });
         rzp.open();
 
@@ -717,6 +781,29 @@
         continueBtn.textContent = 'Continue to Payment';
         alert('Something went wrong starting the payment. Please try again.');
       }
+    }
+
+    continueBtn.addEventListener('click', startPayment);
+
+    document.getElementById('retryPaymentBtn').addEventListener('click', function () {
+      startPayment();
+    });
+
+    document.getElementById('failedNewLookupBtn').addEventListener('click', function () {
+      currentAllocationId = '';
+      document.getElementById('allocationIdInput').value = '';
+      showSection(lookupSection);
+    });
+
+    document.getElementById('sendWhatsappConfirmationBtn').addEventListener('click', function () {
+      var message = [
+        'KAPEBARA — Payment Confirmed ✅',
+        '',
+        'Order ID: ' + lastPaymentDetails.orderId,
+        'Amount Paid: \u20B9' + Number(lastPaymentDetails.amount).toLocaleString('en-IN'),
+        'Transaction / Reference ID: ' + lastPaymentDetails.paymentId
+      ].join('\n');
+      window.open('https://wa.me/' + BUSINESS_WHATSAPP + '?text=' + encodeURIComponent(message), '_blank');
     });
 
     document.getElementById('confirmedNewLookupBtn').addEventListener('click', function () {
