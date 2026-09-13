@@ -562,16 +562,6 @@
       section.classList.remove('hidden');
     }
 
-    /* ---- Contact Us: always opens WhatsApp with the current
-       Allocation ID (if we know one) baked into the message. ---- */
-    document.getElementById('footerContactLink').addEventListener('click', function (e) {
-      e.preventDefault();
-      var message = currentAllocationId
-        ? 'KAPEBARA - ' + currentAllocationId + ' - need a track on my order'
-        : 'Hey there, having trouble with my KAPEBARA payment.';
-      window.open('https://wa.me/' + BUSINESS_WHATSAPP + '?text=' + encodeURIComponent(message), '_blank');
-    });
-
     /* ---- JSONP lookup against the Apps Script Web App ----
        Apps Script Web Apps don't send CORS headers, so a plain
        fetch() can't read the JSON response. Loading it as a
